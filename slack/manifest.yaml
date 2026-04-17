@@ -1,0 +1,62 @@
+# Slack App Manifest — Arthur Signal Agent (Phase 1)
+#
+# Create the app at: https://api.slack.com/apps → "Create New App" → "From a manifest"
+# Paste this YAML, pick your workspace, review permissions, install to workspace.
+#
+# After install:
+#   1. Copy the Bot User OAuth Token (xoxb-...)        → SLACK_BOT_TOKEN in .env
+#   2. Copy the Signing Secret from "Basic Information" → SLACK_SIGNING_SECRET in .env
+#   3. Invite the bot to your alert channel:            /invite @arthur-signal-agent
+#
+# NOTE: interactivity_url must be a public HTTPS URL. For local dev:
+#   ngrok http 8000
+# Then edit this manifest in the Slack app UI and replace REPLACE_ME_WITH_NGROK
+# with your forwarding URL, e.g. https://abc123.ngrok-free.app/slack/interactivity
+
+display_information:
+  name: Arthur Signal Agent
+  description: Surfaces AI governance buying signals to AEs in Slack.
+  background_color: "#1f2d3d"
+  long_description: >
+    Monitors public web signals (job postings, news, SEC filings, LinkedIn hires)
+    for enterprises scaling AI/ML agent deployments. Posts scored alerts to
+    #gtm-signals with Claim and Snooze actions, and writes structured data back
+    to HubSpot for pipeline reporting.
+
+features:
+  bot_user:
+    display_name: arthur-signal-agent
+    always_online: true
+  # No slash_commands key in Phase 1 — Slack rejects empty arrays, so omit
+  # entirely. Phase 3 will add /signal-filter, /signal-digest back in here.
+
+oauth_config:
+  scopes:
+    bot:
+      # Post alerts to the configured channel + thread acknowledgments.
+      - chat:write
+      # Post to channels the bot hasn't been explicitly invited to (optional but
+      # useful if AEs DM-subscribe later in Phase 3). Remove if you want the
+      # bot to only post where it's been invited.
+      - chat:write.public
+      # DM the SLACK_OWNER_USER_ID when the circuit breaker trips.
+      - im:write
+      # Read basic channel metadata for error messages ("I don't have access to #foo").
+      - channels:read
+      # Resolve user id → handle for the thread acknowledgment on Claim.
+      - users:read
+
+settings:
+  interactivity:
+    is_enabled: true
+    # Replace with your ngrok/public URL before saving the manifest.
+    # For production, set this to your real deployment origin.
+    request_url: https://REPLACE_ME_WITH_NGROK/slack/interactivity
+
+  # No event_subscriptions key in Phase 1 — Slack rejects empty bot_events
+  # arrays, and we don't subscribe to any events (all activity is outbound posts
+  # + interactivity button POSTs). Omit entirely.
+
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

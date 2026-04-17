@@ -1,0 +1,75 @@
+# Arthur ICP seed accounts — bootstrap list for Phase 1-3 local dev.
+#
+# This is a **representative sample**, not the final target list. RevOps should
+# replace this with the actual Arthur target accounts (see docs/icp.md §7 for
+# the tiering rubric: Segment A → tier 1, Segment B → tier 2, Segment C → tier 3).
+#
+# Each entry:
+#   domain:           authoritative corporate domain (used for HubSpot dedup)
+#   name:             display name
+#   segment:          "A" | "B" | "C"  (from docs/icp.md §2)
+#   target_tier:      1 | 2 | 3  — score multiplier (1 = highest priority)
+#   greenhouse_slug:  boards-api.greenhouse.io/v1/boards/<slug>
+#   lever_slug:       api.lever.co/v0/postings/<slug>
+#   ashby_slug:       api.ashbyhq.com/posting-api/job-board/<slug>
+#   workday:          {tenant, pod, portal}
+#   ticker:           SEC ticker (enables SEC EDGAR scanning)
+#
+# Companies included here are chosen because their job boards are publicly
+# available at stable slugs — they're useful for local dev even when not on
+# Arthur's real target list.
+
+# ==== Segment B — Mid-market fintechs with working job boards ==============
+
+- domain: ramp.com
+  name: Ramp
+  segment: B
+  target_tier: 2
+  ashby_slug: ramp
+
+- domain: brex.com
+  name: Brex
+  segment: B
+  target_tier: 2
+  greenhouse_slug: brex
+
+- domain: plaid.com
+  name: Plaid
+  segment: B
+  target_tier: 2
+  lever_slug: plaid
+
+- domain: chime.com
+  name: Chime
+  segment: B
+  target_tier: 2
+  greenhouse_slug: chime
+
+- domain: mercury.com
+  name: Mercury
+  segment: B
+  target_tier: 2
+  greenhouse_slug: mercury
+
+- domain: stripe.com
+  name: Stripe
+  segment: B
+  target_tier: 2
+  greenhouse_slug: stripe
+
+# ==== Segment A — regulated enterprise (public co. with ticker) =============
+
+- domain: oscarhealth.com
+  name: Oscar Health
+  segment: A
+  target_tier: 1
+  greenhouse_slug: oscar
+  ticker: OSCR
+
+# ==== Segment C — healthcare scale-up, keeps the mix representative =========
+
+- domain: flatiron.com
+  name: Flatiron Health
+  segment: C
+  target_tier: 3
+  greenhouse_slug: flatironhealth

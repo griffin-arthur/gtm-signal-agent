@@ -1,0 +1,94 @@
+# Known false-positive patterns. Loaded into `suppressions` table on seed.
+# Match is case-insensitive substring, checked against the `field` specified.
+# Source: docs/icp.md §5 (disqualification signals).
+
+# ---- Recruiting / agency patterns ------------------------------------------
+- pattern: "recruiting agency"
+  field: signal_text
+  reason: "agency posting, not direct employer"
+
+- pattern: "staffing firm"
+  field: signal_text
+  reason: "agency posting, not direct employer"
+
+- pattern: "on behalf of our client"
+  field: signal_text
+  reason: "proxy posting"
+
+- pattern: "contract-to-hire on behalf"
+  field: signal_text
+  reason: "proxy posting"
+
+- pattern: "Robert Half"
+  field: company_name
+  reason: "recruiting agency"
+
+- pattern: "Kforce"
+  field: company_name
+  reason: "recruiting agency"
+
+- pattern: "Insight Global"
+  field: company_name
+  reason: "recruiting agency"
+
+- pattern: "TEKsystems"
+  field: company_name
+  reason: "staffing firm"
+
+- pattern: "Randstad"
+  field: company_name
+  reason: "staffing firm"
+
+# ---- AI-adjacent roles that aren't a buyer signal --------------------------
+- pattern: "ai marketing manager"
+  field: signal_text
+  reason: "AI-adjacent, not governance buyer"
+
+- pattern: "ai content creator"
+  field: signal_text
+  reason: "AI-adjacent, not governance buyer"
+
+- pattern: "ai sales specialist"
+  field: signal_text
+  reason: "AI-adjacent, not governance buyer"
+
+# ---- Competing / overlapping AI vendors ------------------------------------
+# These companies *sell* AI governance or observability — Arthur doesn't
+# sell TO them. If their postings/news surface as ICP candidates, drop them.
+# (HN/Reddit co-occurrence with them is handled separately by the competitive
+# ingestor and is DESIRED, not suppressed.)
+- pattern: "Credo AI"
+  field: company_name
+  reason: "competitor — governance vendor"
+
+- pattern: "ModelOp"
+  field: company_name
+  reason: "competitor — governance vendor"
+
+- pattern: "WitnessAI"
+  field: company_name
+  reason: "competitor — AI security"
+
+- pattern: "Pillar Security"
+  field: company_name
+  reason: "competitor — AI security"
+
+- pattern: "Arize"
+  field: company_name
+  reason: "competitor — observability"
+
+- pattern: "Langfuse"
+  field: company_name
+  reason: "competitor — observability"
+
+- pattern: "Fiddler"
+  field: company_name
+  reason: "competitor — observability"
+
+- pattern: "WhyLabs"
+  field: company_name
+  reason: "competitor — observability"
+
+- pattern: "Braintrust"
+  field: company_name
+  reason: "competitor — observability"

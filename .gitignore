@@ -1,0 +1,64 @@
+# --- Secrets / env -----------------------------------------------------------
+# NEVER commit these. Contains API keys, tokens, DB passwords.
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.tox/
+.nox/
+
+# --- Virtual environments ----------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# --- IDE / editors -----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# --- OS ----------------------------------------------------------------------
+Thumbs.db
+Desktop.ini
+
+# --- Project-specific --------------------------------------------------------
+# LLM cache (should live in DB only; accidental local files don't commit)
+llm_cache/
+# Any CSVs or exports dropped into the repo — they often contain PII
+/data/
+*.csv
+# Alembic runtime artifacts
+alembic/versions/__pycache__/
+# Docker compose logs / state
+pgdata/
+
+# --- OpenTelemetry / traces --------------------------------------------------
+traces/
+*.otlp
+
+# --- Node (for Inngest CLI caches) -------------------------------------------
+node_modules/
+npm-debug.log*

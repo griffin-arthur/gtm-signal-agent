@@ -1,0 +1,22 @@
+# Conference speaker pages to scan. Each entry:
+#   name:          display name (used in signal_text)
+#   url:           speaker list URL
+#   selector:      CSS selector matching each speaker card
+#   company_attr:  name of the field or child selector for the speaker's company
+#                  (e.g. ".speaker-company", "data-company")
+#   speaker_attr:  selector for speaker name
+#   title_attr:    (optional) selector for talk title
+#
+# WARNING: these sites change their DOM frequently. Expect to update selectors
+# every conference cycle. This is why we ship fallback regex too.
+
+- name: AI Engineer World's Fair
+  url: https://www.ai.engineer/worldsfair/2025/speakers
+  selector: "[class*='speaker']"
+  speaker_attr: "[class*='name']"
+  company_attr: "[class*='company']"
+  title_attr: "[class*='talk']"
+
+# Add more conferences as you confirm their URLs + DOM structure. Kept short
+# here because an outdated entry is worse than a missing one — silent
+# scraping failures erode AE trust.

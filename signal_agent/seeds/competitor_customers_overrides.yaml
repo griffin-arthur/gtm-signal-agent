@@ -1,0 +1,24 @@
+# Operator-managed competitor-customer overrides.
+#
+# Loaded by `quality/competitor_customers.py::refresh_cache()`. Entries here
+# take precedence over what the scraper finds — use this when you have inside
+# information the scraper can't see (e.g., heard from a prospect call, public
+# case study isn't tagged as "customer" but you know they use the product).
+#
+# Fields:
+#   domain:        ICP company's domain (must match companies.domain)
+#   competitor:    one of the keys in COMPETITOR_SITES
+#   confidence:    0.0-1.0; 1.0 for confirmed, ~0.85 for high-confidence inside info
+#   evidence_url:  URL or free-form note (case-study link, Slack msg ref, etc.)
+
+# Operator-flagged competitor customers. These override the scraper and
+# suppress all alerts for the listed accounts.
+- domain: stripe.com
+  competitor: Braintrust
+  confidence: 1.0
+  evidence_url: "operator-marked — confirmed via internal channels"
+
+- domain: ramp.com
+  competitor: Braintrust
+  confidence: 1.0
+  evidence_url: "operator-marked — confirmed via internal channels"
