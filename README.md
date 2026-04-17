@@ -8,8 +8,7 @@ exported to the Arthur GenAI Engine.
 
 Today the agent is an **awareness tool**: it posts triggers to a shared
 Slack channel so the team has a running pulse on which ICP accounts are
-moving. Routing specific alerts to owning AEs is a future iteration; the
-account-resolver + `Alert` schema are already in place to support it.
+moving. 
 
 The canonical ICP definition lives at [docs/icp.md](docs/icp.md). Every
 tunable knob (keywords, competitors, scoring rubric, LLM prompt) derives
