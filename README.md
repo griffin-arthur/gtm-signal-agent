@@ -2,9 +2,14 @@
 
 Automated agent that monitors the public web for signals indicating an
 enterprise is scaling AI / agentic AI deployments, scores them against
-Arthur's ICP, and surfaces qualified prospects to AEs via Slack — with
-structured data written back to HubSpot and full-fidelity traces exported
-to the Arthur GenAI Engine.
+Arthur's ICP, and surfaces awareness-level alerts to a Slack channel —
+with structured data written back to HubSpot and full-fidelity traces
+exported to the Arthur GenAI Engine.
+
+Today the agent is an **awareness tool**: it posts triggers to a shared
+Slack channel so the team has a running pulse on which ICP accounts are
+moving. Routing specific alerts to owning AEs is a future iteration; the
+account-resolver + `Alert` schema are already in place to support it.
 
 The canonical ICP definition lives at [docs/icp.md](docs/icp.md). Every
 tunable knob (keywords, competitors, scoring rubric, LLM prompt) derives
@@ -25,11 +30,13 @@ from it.
    is Arthur-ICP aware (see `signal_agent/scoring/validator.py`).
 4. **Scores** against a weighted rubric that accounts for signal freshness,
    LLM confidence, and the company's ICP tier (Segment A = 1.25x multiplier).
-5. **Decides to alert** using three layers of gating — tier-1 signal bypass,
-   first-time threshold crossing, or material change during a 24h cooldown —
-   so the Slack channel doesn't flood when a single company generates many signals.
+5. **Decides whether to alert** using three layers of gating — tier-1
+   signal bypass, first-time threshold crossing, or material change during
+   a 24h cooldown — so the channel doesn't flood when a single company
+   generates many signals.
 6. **Groups bursty alerts** into a digest when alert-rate exceeds 5/hour.
-7. **Posts to Slack** with Claim / Snooze / Open-in-HubSpot buttons.
+7. **Posts to Slack** — an awareness ping with Claim / Snooze / Open-in-HubSpot
+   buttons so anyone watching can mark an account as being worked.
 8. **Writes to HubSpot**: `arthur_signal_score`, `arthur_signal_tier`,
    `arthur_signal_summary`, `arthur_last_signal_date` on the company record.
 9. **Traces everything** via OpenTelemetry to the Arthur GenAI Engine
@@ -186,7 +193,7 @@ or decision type.
   (tier 1) scores 1.25× what it does at a Segment C account (tier 3).
 - **Competitor-customer check before LLM spend.** Accounts already on
   an Arthur competitor's public customer page are suppressed at ingest —
-  we don't waste LLM dollars or AE attention on them.
+  we don't waste LLM dollars or channel attention on them.
 - **Operator overrides in YAML.** Inside information (case studies,
   private knowledge) flows into `seeds/competitor_customers_overrides.yaml`
   and wins over the scraper.
