@@ -1,0 +1,99 @@
+# Render Blueprint — defines the prod deployment.
+#
+# To deploy: in the Render dashboard, New → Blueprint → pick this repo
+# (gtm-signal-agent) → main branch → Render reads this file and provisions
+# the web service + Postgres in one shot.
+#
+# After the first deploy, any change here + push to main triggers updates.
+# Environment variables marked `sync: false` are set manually in the UI
+# (secrets don't live in version control).
+
+services:
+  - type: web
+    name: signal-agent
+    runtime: python
+    plan: starter   # $7/mo, no idle spin-down (needed so Inngest crons fire)
+    region: oregon  # low-latency to Inngest Cloud's default region
+    branch: main
+    autoDeploy: true
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -e .
+    startCommand: |
+      alembic upgrade head && \
+        uvicorn signal_agent.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      # --- Render-injected ---
+      - key: DATABASE_URL
+        fromDatabase:
+          name: signal-agent-db
+          property: connectionString
+      - key: PYTHON_VERSION
+        value: "3.12"
+      # --- Feature flags (non-secret, tracked in VCS) ---
+      - key: ENV
+        value: prod
+      - key: LOG_LEVEL
+        value: INFO
+      - key: INNGEST_APP_ID
+        value: signal-agent-prod
+      - key: INNGEST_DEV
+        value: "0"
+      - key: SIGNAL_AGENT_DOTENV_OVERRIDE
+        value: "0"   # prod uses real env vars, not .env
+      - key: SLACK_ALERT_CHANNEL
+        value: "#gtm-signals"
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-5-20250929
+      - key: ARTHUR_TRACING_ENABLED
+        value: "1"
+      - key: ARTHUR_ENGINE_BASE_URL
+        value: https://engine.development.arthur.ai
+      - key: ARTHUR_TASK_ID
+        value: 77ff2f48-e174-42da-a1e2-9b5326328fff
+      - key: ARTHUR_SERVICE_NAME
+        value: signal-agent-prod
+      # --- Scoring tuning (changeable without code deploy) ---
+      - key: ALERT_SCORE_THRESHOLD
+        value: "8"
+      - key: ALERT_CUMULATIVE_THRESHOLD
+        value: "12"
+      - key: ALERT_CUMULATIVE_WINDOW_DAYS
+        value: "60"
+      - key: LLM_CONFIDENCE_FLOOR
+        value: "0.7"
+      - key: CIRCUIT_BREAKER_ALERTS_PER_HOUR
+        value: "20"
+      - key: DIGEST_RATE_THRESHOLD
+        value: "5"
+      - key: DIGEST_FLUSH_INTERVAL_MINUTES
+        value: "15"
+      - key: ALERT_COOLDOWN_HOURS
+        value: "24"
+      - key: ALERT_MATERIAL_CHANGE_RATIO
+        value: "0.5"
+      # --- Secrets (set in Render dashboard after blueprint creation) ---
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: HUBSPOT_ACCESS_TOKEN
+        sync: false
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: SLACK_SIGNING_SECRET
+        sync: false
+      - key: SLACK_OWNER_USER_ID
+        sync: false
+      - key: INNGEST_EVENT_KEY
+        sync: false
+      - key: INNGEST_SIGNING_KEY
+        sync: false
+      - key: ARTHUR_ENGINE_API_KEY
+        sync: false
+
+databases:
+  - name: signal-agent-db
+    plan: free        # 1 GB + 90-day retention; upgrade to Starter ($7) when full
+    region: oregon
+    databaseName: signal_agent
+    user: signal_agent
