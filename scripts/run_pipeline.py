@@ -91,14 +91,22 @@ async def ingest_company(target: CompanyTarget) -> list[int]:
     return new_ids
 
 
-def process_signal(signal_id: int) -> dict:
+def process_signal(signal_id: int, per_run_alerted_companies: set[int] | None = None) -> dict:
     """Full alert pipeline for one signal.
+
+    `per_run_alerted_companies` is a caller-owned set of company_ids that have
+    already been alerted within THIS pipeline invocation. When a company is
+    in the set, subsequent signals for it are suppressed with outcome
+    `suppressed_already_alerted_this_run`. This is a hard cap on top of the
+    persistent cooldown — it prevents the Slack channel from getting three
+    alerts for the same company in 40 seconds when many queued signals all
+    push the cumulative score above thresholds during one processing loop.
 
     Wrapped in a parent OTel span so the whole pipeline shows up as a single
     trace in Arthur. LLM and HTTP calls auto-instrument as child spans.
     """
     with stage_span("process_signal", signal_id=signal_id) as parent_span:
-        result = _process_signal_inner(signal_id)
+        result = _process_signal_inner(signal_id, per_run_alerted_companies)
         # Record outcome on the parent span so Arthur's Trace Viewer can
         # filter/group by it.
         parent_span.set_attribute("signal_agent.outcome", result.get("outcome", "error"))
@@ -108,7 +116,9 @@ def process_signal(signal_id: int) -> dict:
         return result
 
 
-def _process_signal_inner(signal_id: int) -> dict:
+def _process_signal_inner(
+    signal_id: int, per_run_alerted_companies: set[int] | None = None,
+) -> dict:
     with session_scope() as s:
         sig: Signal = s.get(Signal, signal_id)
         if sig is None:
@@ -203,6 +213,17 @@ def _process_signal_inner(signal_id: int) -> dict:
                 **score_info,
             }
 
+        # 3b. Per-run hard cap — one alert per company per pipeline run.
+        # The persistent cooldown still governs cross-run re-alerts; this
+        # is a stricter intra-run guard that prevents the channel flooding
+        # when many queued signals push the cumulative score up in bursts.
+        if per_run_alerted_companies is not None and sig.company_id in per_run_alerted_companies:
+            return {
+                "signal_id": signal_id,
+                "outcome": "suppressed_already_alerted_this_run",
+                **score_info,
+            }
+
         # 4. Account resolution (HubSpot calls are httpx → auto-instrumented)
         with stage_span("account_resolution"):
             resolver = AccountResolver()
@@ -273,6 +294,10 @@ def _process_signal_inner(signal_id: int) -> dict:
         # Record cooldown state so subsequent signals in this run / future runs
         # respect the 24h window unless a material change fires.
         scorer.mark_alerted(sig.company, rollup.cumulative_score)
+        # Register with the per-run hard cap — any further signals for this
+        # company in the current pipeline invocation will short-circuit.
+        if per_run_alerted_companies is not None:
+            per_run_alerted_companies.add(sig.company_id)
 
         if sig.company.hubspot_id:
             with stage_span("hubspot_write"):
@@ -333,10 +358,15 @@ async def main() -> int:
     all_pending = sorted(set(all_new) | set(pending))
     print(f"\n[process] running {len(all_pending)} signals through pipeline...\n")
 
+    # Hard cap: each company alerts at most once per pipeline run. This set
+    # is owned by main() and passed into process_signal so the guard is
+    # testable (not hidden module state).
+    alerted_this_run: set[int] = set()
+
     outcomes: dict[str, int] = {}
     for sid in all_pending:
         try:
-            result = process_signal(sid)
+            result = process_signal(sid, per_run_alerted_companies=alerted_this_run)
             oc = result.get("outcome", "error")
             outcomes[oc] = outcomes.get(oc, 0) + 1
             tag = "✓" if oc == "alerted" else " "
