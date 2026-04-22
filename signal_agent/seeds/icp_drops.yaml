@@ -29,6 +29,16 @@
 #   3. Next CSV re-import won't undo either change.
 
 drops:
+  # --- Existing Arthur customers (no point re-prospecting) ---
+  # Add to this list when a deal closes. Multiple aliases per company so
+  # variations like "JPMorgan Chase & Co." don't sneak back in via a CSV import.
+  - JPMorgan Chase
+  - JPMorgan Chase & Co.
+  - JPMorgan
+  - JPMC
+  - Chase
+  - J.P. Morgan
+
   # --- AI vendors / AI-native startups (compete with / sell to same buyers) ---
   - Abnormal AI
   - Baseten
