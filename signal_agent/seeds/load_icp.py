@@ -3,7 +3,13 @@
 Usage:
     uv run python -m signal_agent.seeds.load_icp
 
-Reads icp_companies.yaml + suppression.yaml and upserts rows. Safe to re-run.
+Reads three seed files and upserts rows. Safe to re-run any time:
+  - icp_companies.yaml      — bootstrap ICP accounts (always_icp=true on load)
+  - suppression.yaml        — disqualification patterns
+  - icp_drops.yaml          — companies explicitly excluded from polling;
+                              sets is_icp=false AFTER the main load, so a
+                              company that appears in both files ends up
+                              excluded (drops win).
 """
 from __future__ import annotations
 
@@ -11,7 +17,7 @@ from pathlib import Path
 
 import structlog
 import yaml
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from signal_agent.db import session_scope
 from signal_agent.models import Company, Suppression
@@ -26,6 +32,13 @@ def load() -> None:
         companies = yaml.safe_load(f) or []
     with (SEEDS_DIR / "suppression.yaml").open() as f:
         suppressions = yaml.safe_load(f) or []
+
+    drops_path = SEEDS_DIR / "icp_drops.yaml"
+    drop_names: list[str] = []
+    if drops_path.exists():
+        with drops_path.open() as f:
+            data = yaml.safe_load(f) or {}
+        drop_names = data.get("drops", []) or []
 
     with session_scope() as s:
         for entry in companies:
@@ -70,7 +83,24 @@ def load() -> None:
                     reason=entry["reason"],
                 ))
 
-    log.info("seeds.loaded", companies=len(companies), suppressions=len(suppressions))
+        # Apply the drops LAST, so any bootstrap company that also appears
+        # in icp_drops.yaml ends up excluded. Row count is tracked separately
+        # for observability.
+        dropped = 0
+        if drop_names:
+            dropped = s.execute(
+                update(Company)
+                .where(Company.name.in_(drop_names))
+                .values(is_icp=False)
+            ).rowcount or 0
+
+    log.info(
+        "seeds.loaded",
+        companies=len(companies),
+        suppressions=len(suppressions),
+        drops_file_size=len(drop_names),
+        drops_applied=dropped,
+    )
 
 
 if __name__ == "__main__":

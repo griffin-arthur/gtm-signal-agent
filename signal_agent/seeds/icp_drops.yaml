@@ -1,0 +1,197 @@
+# ICP drops — companies excluded from polling.
+#
+# Loaded by signal_agent.seeds.load_icp (after icp_companies.yaml). Sets
+# is_icp=false for every matching name. The CSV importer intentionally
+# does NOT re-enable these on re-import.
+#
+# Curated on 2026-04-22 from the 369-company target list to remove 150
+# lowest-ICP-fit entries. Rationale by category:
+#
+#   - AI vendors / AI-native startups that compete with or sell TO the
+#     same stack Arthur sells to
+#   - Large infra / hyperscaler / cloud providers (they BUILD governance,
+#     don't buy it)
+#   - Pure cybersecurity companies (different budget pool)
+#   - Consumer internet / media / entertainment (no regulated AI)
+#   - Large retail / consumer goods / food (low AI-gov urgency)
+#   - Commodity semiconductor / heavy industrial / energy (not agentic buyers)
+#   - Physical logistics and consumer services
+#
+# Kept (against one or more of these categories): defense/aerospace primes
+# (Lockheed, Raytheon, Northrop, L3Harris, Honeywell, GE Aerospace, Boeing),
+# finserv banks, airlines, pharma with AI exposure (Bayer), autos with
+# safety-critical AI (Ford, GM, Waymo), regulated automation (Rockwell,
+# Motorola Solutions).
+#
+# To re-enable a dropped company:
+#   1. Remove its name from this file.
+#   2. UPDATE companies SET is_icp=true WHERE name='<Name>'; (one-time)
+#   3. Next CSV re-import won't undo either change.
+
+drops:
+  # --- AI vendors / AI-native startups (compete with / sell to same buyers) ---
+  - Abnormal AI
+  - Baseten
+  - Cerebras
+  - Cohere
+  - Cresta
+  - Dataiku
+  - EvenUp
+  - EvolutionIQ
+  - Eightfold
+  - Eightfold AI
+  - Glean
+  - Harvey
+  - Horizon3.ai
+  - Modular
+  - Moveworks
+  - Replit
+  - Rescale
+  - Samba TV
+  - SandboxAQ
+  - Scale AI
+  - Turing
+  - Uniphore
+  - Vectra AI
+  - WRITER
+  - You.com
+  - EliseAI
+
+  # --- Large infra / hyperscaler / cloud (they build governance) ---
+  - Cloudflare
+  - CoreWeave
+  - Databricks
+  - Digital Realty
+  - Docker, Inc
+  - Elastic
+  - F5
+  - Fivetran
+  - GitLab
+  - HP
+  - Hewlett Packard Enterprise
+  - Juniper Square
+  - Lumen Technologies
+  - NetApp
+  - Postman
+  - Starburst
+  - Supermicro
+  - Workato
+  - Vertiv
+  - Oracle
+
+  # --- Pure cybersecurity (different budget, not AI-gov buyer) ---
+  - Corelight
+  - CrowdStrike
+  - Drata
+  - Fortinet
+  - Obsidian Security
+  - Palo Alto Networks
+  - Ping Identity
+  - SecurityScorecard
+  - Semgrep
+  - Vanta
+  - Zscaler
+
+  # --- Consumer internet / media / entertainment ---
+  - Airbnb
+  - Comcast
+  - Electronic Arts (EA)
+  - Live Nation Entertainment
+  - MGM Resorts International
+  - Netflix
+  - Pinterest
+  - Reddit, Inc.
+  - Roblox
+  - Spectrum
+  - The Walt Disney Company
+  - Warner Bros. Discovery
+  - Webflow
+
+  # --- Large retail / consumer goods / food ---
+  - Aramark
+  - Best Buy
+  - C.H. Robinson
+  - Casey's
+  - Chewy
+  - Colgate-Palmolive
+  - Conagra Brands
+  - Costco Wholesale
+  - Deckers Brands
+  - Ecolab
+  - General Mills
+  - Grainger
+  - Hormel Foods
+  - Kellanova
+  - Keurig Dr Pepper Inc.
+  - Kimberly-Clark
+  - Lowe's Companies, Inc.
+  - McDonald's
+  - Nike
+  - O'Reilly Auto Parts
+  - PepsiCo
+  - Procter & Gamble
+  - Skechers
+  - Starbucks
+  - Stitch Fix
+  - Sysco
+  - Target
+  - The Coca-Cola Company
+  - The Home Depot
+  - Tractor Supply Company
+  - US Foods
+  - Ulta Beauty
+  - Walmart
+
+  # --- Semiconductor / components / commodity hardware ---
+  - AMD
+  - Analog Devices
+  - Applied Materials
+  - Arrow Electronics
+  - Broadcom
+  - Cadence
+  - GlobalFoundries
+  - Ingram Micro
+  - KLA
+  - Keysight Technologies
+  - Marvell Technology
+  - Micron Technology
+  - Microchip Technology Inc.
+  - Monolithic Power Systems, Inc.
+  - Qualcomm
+  - Synopsys Inc
+  - Texas Instruments
+  - WD
+  - onsemi
+
+  # --- Heavy industrial / energy / utilities / materials ---
+  - 3M
+  - ADM
+  - Baker Hughes
+  - ConocoPhillips
+  - Corteva Agriscience
+  - DTE Energy
+  - Emerson
+  - GE Vernova
+  - Jacobs
+  - Lennar
+  - NOV
+  - NRG Energy
+  - Parker Hannifin
+  - Prologis
+  - Public Storage
+  - Rollins, Inc.
+  - Solventum
+  - Southern Company
+  - Stanley Black & Decker, Inc.
+  - Steel Dynamics, Inc
+  - Weyerhaeuser
+  - Xylem
+
+  # --- Physical logistics / auto-services ---
+  - Avis Budget Group
+  - CarMax
+  - Carvana
+  - HII
+  - Las Vegas Sands Corp.
+  - Norfolk Southern
+  - United Rentals

@@ -236,14 +236,16 @@ def upsert_companies(resolved: list[ResolvedCompany], default_tier: int,
                 inserted += 1
             else:
                 # Fill in missing tier/segment but don't override explicit values.
+                # Critically, do NOT flip `is_icp` back to True for existing rows:
+                # operators intentionally set it to False (via SQL or the seed
+                # YAML) to drop a company from polling, and that choice should
+                # survive CSV re-imports. Re-enabling requires a manual SQL
+                # update or editing the drop out of whatever list excluded it.
                 if not dry_run:
                     if existing.target_tier is None:
                         existing.target_tier = default_tier
                     if not existing.segment:
                         existing.segment = default_segment
-                    # Re-enable polling if we now have confidence on a domain we previously flagged.
-                    if is_icp and not existing.is_icp:
-                        existing.is_icp = True
                 updated += 1
 
     return {
