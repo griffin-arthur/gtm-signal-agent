@@ -8,23 +8,33 @@ decides whether the incoming signal warrants an alert.
 
 A naive "alert any time cumulative_score ≥ threshold" floods the channel: once
 a company crosses the threshold, every subsequent validated signal re-crosses
-it and fires again. We apply three layers of gating instead:
+it and fires again. We apply these layers of gating:
 
-1. **Always-alert signal types** (Tier 1 urgency, bypass everything):
+1. **Same-URL dedup** — if the triggering signal's `source_url` was already
+   the trigger for a prior alert on this company, NEVER re-alert. Protects
+   against the Slack channel seeing the same news article / job post twice
+   on consecutive runs. Applies to ALL signal types including always-alert.
+
+2. **Always-alert signal types** (Tier 1 urgency, bypass cooldown+threshold):
    - `news.ai_incident`
    - `job_posting.ai_governance`
    - `job_posting.ai_leadership`
    - `news.exec_hire_ai`
    - `linkedin.exec_hire_ai`
+   Requires a DIFFERENT source_url than any previously-alerted signal.
 
-2. **First-time threshold crossing** — company has never been alerted, score
+3. **First-time threshold crossing** — company has never been alerted, score
    now crosses single-signal OR cumulative threshold. One alert.
 
-3. **Material-change during cooldown** — within ALERT_COOLDOWN_HOURS of the
-   previous alert, re-alerting is suppressed UNLESS cumulative score has
-   grown by ≥ ALERT_MATERIAL_CHANGE_RATIO over the last-alerted score.
+4. **Same-signal-type cooldown** — within ALERT_COOLDOWN_HOURS of the
+   previous alert, re-alerting on the same signal_type is suppressed.
+   A NEW signal type (e.g. exec_hire after a prior job_posting alert)
+   passes through subject to the material-change check.
 
-After the cooldown expires, alerts resume normally.
+5. **Material-change during cooldown** — re-alert only if cumulative score
+   has grown by ≥ ALERT_MATERIAL_CHANGE_RATIO over the last-alerted score.
+
+After cooldown expires, alerts resume normally — still subject to URL dedup.
 """
 from __future__ import annotations
 
@@ -35,7 +45,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from signal_agent.config import settings
-from signal_agent.models import Company, Signal, SignalStatus, SignalTier
+from signal_agent.models import Alert, Company, Signal, SignalStatus, SignalTier
 from signal_agent.schemas import CompanyScoreRollup
 from signal_agent.scoring.rubric import score_signal, tier_for_score
 
@@ -101,23 +111,74 @@ def cumulative_company_score(session: Session, company_id: int) -> CompanyScoreR
     )
 
 
+def _prior_alert_summary(session: Session, company_id: int) -> tuple[set[str], set[str]]:
+    """Collect the set of (source_urls, signal_types) from every prior alert
+    for this company. Used for cross-run dedup.
+
+    Cheap: each company typically has a handful of alerts total; the join
+    is on indexed foreign keys. No need to narrow by a time window since
+    source_url dedup is intentionally "forever" — if we've Slack-posted
+    about this article before, we never post it again.
+    """
+    rows = session.execute(
+        select(Signal.source_url, Signal.signal_type)
+        .join(Alert, Alert.triggering_signal_id == Signal.id)
+        .where(Alert.company_id == company_id)
+    ).all()
+    urls = {r[0] for r in rows if r[0]}
+    types = {r[1] for r in rows if r[1]}
+    return urls, types
+
+
 def should_alert(
     rollup: CompanyScoreRollup,
     triggering: Signal,
     company: Company,
+    session: Session | None = None,
     now: datetime | None = None,
 ) -> AlertDecision:
     """Decide whether to fire an alert for this signal.
 
-    See module docstring for the full decision tree. The three inputs:
+    See module docstring for the full decision tree. Inputs:
       - rollup:      the company's cumulative score across the window
       - triggering:  the newly-ingested signal that landed us here
       - company:     has last_alerted_at / last_alerted_score for cooldown
+      - session:     SQLAlchemy session; used to query prior-alert history
+                     for cross-run URL + signal-type dedup. Optional for
+                     backward compatibility — callers without session skip
+                     the dedup checks (legacy behavior).
     """
     now = now or datetime.now(timezone.utc)
 
-    # Rule 1: always-alert signal types. Bypass cooldown entirely.
+    # Gather the prior-alert history for this company (URLs + signal types
+    # previously posted to Slack). Empty if session is None (legacy callers).
+    prior_urls: set[str] = set()
+    prior_types: set[str] = set()
+    if session is not None:
+        prior_urls, prior_types = _prior_alert_summary(session, company.id)
+
+    # Rule 1: same-URL dedup. ALWAYS applies, including to always-alert
+    # signal types. If we've Slack-posted about this specific article or
+    # job posting before for this company, we never post it again.
+    if triggering.source_url and triggering.source_url in prior_urls:
+        return AlertDecision(should_fire=False, reason="already_alerted_on_this_url")
+
+    # Rule 2: always-alert signal types. Bypass threshold + material-change,
+    # BUT only if this signal type hasn't already alerted during the active
+    # cooldown. Two news.exec_hire_ai articles about the same FICO CAIO
+    # appointment shouldn't both fire — one is enough; a different signal
+    # type (news.ai_incident) would still break through.
     if triggering.signal_type in ALWAYS_ALERT_SIGNAL_TYPES:
+        if company.last_alerted_at is not None:
+            cooldown_end = company.last_alerted_at + timedelta(
+                hours=settings.alert_cooldown_hours,
+            )
+            in_cooldown = now < cooldown_end
+            if in_cooldown and triggering.signal_type in prior_types:
+                return AlertDecision(
+                    should_fire=False,
+                    reason="always_alert_suppressed_same_type_in_cooldown",
+                )
         return AlertDecision(should_fire=True, reason="always_alert")
 
     # Below threshold? Never alert.
@@ -126,13 +187,22 @@ def should_alert(
     if not (above_single or above_cumulative):
         return AlertDecision(should_fire=False, reason="below_threshold")
 
-    # Rule 2: first-time crossing — company has never been alerted.
+    # Rule 3: first-time crossing — company has never been alerted.
     if company.last_alerted_at is None:
         return AlertDecision(should_fire=True, reason="first_crossing")
 
-    # Rule 3: we're inside the cooldown window. Only fire on material change.
+    # Rule 4: we're inside the cooldown window.
     cooldown_end = company.last_alerted_at + timedelta(hours=settings.alert_cooldown_hours)
     in_cooldown = now < cooldown_end
+
+    # Rule 4a: same signal type as a prior alert while in cooldown → suppress.
+    # Handles the "same exec hire / same news article keeps re-scoring" case.
+    # A genuinely new signal type (e.g. new job posting after exec-hire alert)
+    # bypasses this and gets evaluated by the material-change rule.
+    if in_cooldown and triggering.signal_type in prior_types:
+        return AlertDecision(
+            should_fire=False, reason="cooldown_same_signal_type",
+        )
 
     last_score = company.last_alerted_score or 0.0
     delta = rollup.cumulative_score - last_score

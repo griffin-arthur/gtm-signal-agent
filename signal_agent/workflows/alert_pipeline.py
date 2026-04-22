@@ -122,7 +122,7 @@ async def process_signal(ctx: inngest.Context) -> dict:
             sig = s.get(Signal, signal_id)
             scorer.update_signal_score(s, sig)
             rollup = scorer.cumulative_company_score(s, sig.company_id)
-            decision = scorer.should_alert(rollup, sig, sig.company)
+            decision = scorer.should_alert(rollup, sig, sig.company, session=s)
             return {
                 "raw_score": sig.raw_score,
                 "tier": sig.tier.value if sig.tier else None,

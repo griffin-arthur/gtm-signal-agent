@@ -192,7 +192,7 @@ def _process_signal_inner(
         with stage_span("score_and_decide") as dec_span:
             scorer.update_signal_score(s, sig)
             rollup = scorer.cumulative_company_score(s, sig.company_id)
-            decision = scorer.should_alert(rollup, sig, sig.company)
+            decision = scorer.should_alert(rollup, sig, sig.company, session=s)
             dec_span.set_attribute("signal_agent.raw_score", sig.raw_score)
             dec_span.set_attribute("signal_agent.cumulative", rollup.cumulative_score)
             dec_span.set_attribute("signal_agent.decision_reason", decision.reason)
