@@ -71,6 +71,18 @@ class Settings(BaseSettings):
     # signal types (news.ai_incident, job_posting.ai_*) bypass cooldown
     # regardless — those are always-alert per the build brief.
     alert_material_change_ratio: float = 0.5
+    # Same-signal-type cooldown: separate (longer) window than the
+    # general material-change cooldown. Prevents the Slack channel from
+    # seeing "another product launch at Stripe" daily — even once the
+    # 24h general cooldown expires, the same signal_type can't re-alert
+    # for this many days after the prior alert. Covers both always-alert
+    # types and the non-urgent path.
+    alert_same_type_cooldown_days: int = 7
+
+    # LLM cache TTL for validation results. Must be >= alert_cumulative_window_days
+    # so signals inside the scoring window never re-prompt the LLM. Default
+    # gives 7 days of headroom.
+    llm_cache_ttl_days: int = 67
 
     # Arthur tracing (OpenTelemetry → Arthur Engine OTLP /v1/traces endpoint).
     # When enabled, Anthropic LLM calls, HTTP fetches, and pipeline-stage spans

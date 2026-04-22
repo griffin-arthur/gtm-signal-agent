@@ -6,7 +6,9 @@ Runs a Claude call that answers three questions:
  3. Extract structured details + write a one-sentence "why this matters for Arthur".
 
 Output is strict JSON, parsed and validated. Results are cached by hash of the
-(signal_type + signal_text) for 30 days so re-ingesting the same posting costs $0.
+(signal_type + signal_text) so re-ingesting the same posting costs $0. The
+cache TTL is controlled by `LLM_CACHE_TTL_DAYS` (default 67 days, which is
+7 days beyond the scoring window so signals inside the window never miss).
 
 The system prompt is the other main tuning lever besides `rubric.py`. When the
 weekly review flags false positives, edit the negative examples here.
@@ -150,7 +152,9 @@ def _store_cached(key: str, result: ValidationResult) -> None:
             LLMCache(
                 cache_key=key,
                 result_json=result.model_dump(),
-                expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+                expires_at=datetime.now(timezone.utc) + timedelta(
+                    days=settings.llm_cache_ttl_days
+                ),
             )
         )
 

@@ -26,10 +26,11 @@ it and fires again. We apply these layers of gating:
 3. **First-time threshold crossing** — company has never been alerted, score
    now crosses single-signal OR cumulative threshold. One alert.
 
-4. **Same-signal-type cooldown** — within ALERT_COOLDOWN_HOURS of the
-   previous alert, re-alerting on the same signal_type is suppressed.
-   A NEW signal type (e.g. exec_hire after a prior job_posting alert)
-   passes through subject to the material-change check.
+4. **Same-signal-type cooldown** — within ALERT_SAME_TYPE_COOLDOWN_DAYS
+   (default 7 days) of the PRIOR same-type alert for this company,
+   re-alerting on the same signal_type is suppressed. A NEW signal type
+   (e.g. exec_hire after a prior job_posting alert) passes through
+   subject to the material-change check.
 
 5. **Material-change during cooldown** — re-alert only if cumulative score
    has grown by ≥ ALERT_MATERIAL_CHANGE_RATIO over the last-alerted score.
@@ -111,23 +112,36 @@ def cumulative_company_score(session: Session, company_id: int) -> CompanyScoreR
     )
 
 
-def _prior_alert_summary(session: Session, company_id: int) -> tuple[set[str], set[str]]:
-    """Collect the set of (source_urls, signal_types) from every prior alert
-    for this company. Used for cross-run dedup.
+def _prior_alert_summary(
+    session: Session, company_id: int,
+) -> tuple[set[str], dict[str, datetime]]:
+    """Collect, for this company, (a) every source_url we've posted about
+    forever, and (b) the most recent Slack-post timestamp for each
+    signal_type we've alerted on.
 
-    Cheap: each company typically has a handful of alerts total; the join
-    is on indexed foreign keys. No need to narrow by a time window since
-    source_url dedup is intentionally "forever" — if we've Slack-posted
-    about this article before, we never post it again.
+    Two return values because their TTLs differ:
+      - URL dedup is intentionally forever (the same article is the same
+        article whether we saw it yesterday or last quarter)
+      - Signal-type cooldown is a rolling window — an old product-launch
+        alert from 3 months ago shouldn't block a fresh one today
     """
     rows = session.execute(
-        select(Signal.source_url, Signal.signal_type)
+        select(Signal.source_url, Signal.signal_type, Alert.fired_at)
         .join(Alert, Alert.triggering_signal_id == Signal.id)
         .where(Alert.company_id == company_id)
     ).all()
-    urls = {r[0] for r in rows if r[0]}
-    types = {r[1] for r in rows if r[1]}
-    return urls, types
+    urls: set[str] = set()
+    # For each signal_type, keep only the MOST RECENT fired_at. Older
+    # entries lose because the cooldown runs from the latest post.
+    latest_by_type: dict[str, datetime] = {}
+    for url, stype, fired_at in rows:
+        if url:
+            urls.add(url)
+        if stype and fired_at is not None:
+            prev = latest_by_type.get(stype)
+            if prev is None or fired_at > prev:
+                latest_by_type[stype] = fired_at
+    return urls, latest_by_type
 
 
 def should_alert(
@@ -150,12 +164,19 @@ def should_alert(
     """
     now = now or datetime.now(timezone.utc)
 
-    # Gather the prior-alert history for this company (URLs + signal types
-    # previously posted to Slack). Empty if session is None (legacy callers).
+    # Gather the prior-alert history for this company (URLs forever +
+    # per-signal-type most-recent timestamps). Empty if session is None.
     prior_urls: set[str] = set()
-    prior_types: set[str] = set()
+    prior_type_latest: dict[str, datetime] = {}
     if session is not None:
-        prior_urls, prior_types = _prior_alert_summary(session, company.id)
+        prior_urls, prior_type_latest = _prior_alert_summary(session, company.id)
+
+    # Helper: is this signal_type still in its rolling cooldown window?
+    same_type_cooldown = timedelta(days=settings.alert_same_type_cooldown_days)
+
+    def _in_same_type_window() -> bool:
+        last = prior_type_latest.get(triggering.signal_type)
+        return last is not None and (now - last) < same_type_cooldown
 
     # Rule 1: same-URL dedup. ALWAYS applies, including to always-alert
     # signal types. If we've Slack-posted about this specific article or
@@ -164,21 +185,17 @@ def should_alert(
         return AlertDecision(should_fire=False, reason="already_alerted_on_this_url")
 
     # Rule 2: always-alert signal types. Bypass threshold + material-change,
-    # BUT only if this signal type hasn't already alerted during the active
-    # cooldown. Two news.exec_hire_ai articles about the same FICO CAIO
-    # appointment shouldn't both fire — one is enough; a different signal
-    # type (news.ai_incident) would still break through.
+    # BUT only if this signal type hasn't already alerted in the rolling
+    # same-type cooldown window (default 7 days — see config). Two
+    # news.exec_hire_ai articles about the same FICO CAIO appointment
+    # shouldn't both fire within a week; a different always-alert type
+    # (news.ai_incident) would still break through.
     if triggering.signal_type in ALWAYS_ALERT_SIGNAL_TYPES:
-        if company.last_alerted_at is not None:
-            cooldown_end = company.last_alerted_at + timedelta(
-                hours=settings.alert_cooldown_hours,
+        if _in_same_type_window():
+            return AlertDecision(
+                should_fire=False,
+                reason="always_alert_suppressed_same_type_in_cooldown",
             )
-            in_cooldown = now < cooldown_end
-            if in_cooldown and triggering.signal_type in prior_types:
-                return AlertDecision(
-                    should_fire=False,
-                    reason="always_alert_suppressed_same_type_in_cooldown",
-                )
         return AlertDecision(should_fire=True, reason="always_alert")
 
     # Below threshold? Never alert.
@@ -191,18 +208,18 @@ def should_alert(
     if company.last_alerted_at is None:
         return AlertDecision(should_fire=True, reason="first_crossing")
 
-    # Rule 4: we're inside the cooldown window.
-    cooldown_end = company.last_alerted_at + timedelta(hours=settings.alert_cooldown_hours)
-    in_cooldown = now < cooldown_end
-
-    # Rule 4a: same signal type as a prior alert while in cooldown → suppress.
-    # Handles the "same exec hire / same news article keeps re-scoring" case.
-    # A genuinely new signal type (e.g. new job posting after exec-hire alert)
-    # bypasses this and gets evaluated by the material-change rule.
-    if in_cooldown and triggering.signal_type in prior_types:
+    # Rule 4: same signal type still in rolling cooldown → suppress.
+    # This is the cross-run dedup gate that catches "the same product-launch
+    # news keeps reappearing at the same company" regardless of general
+    # material-change cooldown state.
+    if _in_same_type_window():
         return AlertDecision(
             should_fire=False, reason="cooldown_same_signal_type",
         )
+
+    # Rule 5: we're inside the GENERAL (24h) cooldown window.
+    cooldown_end = company.last_alerted_at + timedelta(hours=settings.alert_cooldown_hours)
+    in_cooldown = now < cooldown_end
 
     last_score = company.last_alerted_score or 0.0
     delta = rollup.cumulative_score - last_score
