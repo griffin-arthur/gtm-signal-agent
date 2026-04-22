@@ -250,6 +250,15 @@ def _process_signal_inner(
         s.add(alert)
         s.flush()
 
+        # Register with the per-run hard cap + persistent cooldown immediately
+        # on Alert creation — applies whether we post live OR queue for digest.
+        # (Previously this only ran after live Slack post, which let two
+        # near-simultaneous signals each create a digest-queued Alert for the
+        # same company in a single run.)
+        scorer.mark_alerted(sig.company, rollup.cumulative_score)
+        if per_run_alerted_companies is not None:
+            per_run_alerted_companies.add(sig.company_id)
+
         # 7a. Digest-mode gating — bursty non-Tier-1 alerts get batched.
         if digest.should_batch(s, sig.tier):
             digest.enqueue(s, alert)
@@ -291,13 +300,8 @@ def _process_signal_inner(
         with stage_span("slack_post"):
             ts = SlackAlerter().post_alert(ctx)
         alert.slack_ts = ts
-        # Record cooldown state so subsequent signals in this run / future runs
-        # respect the 24h window unless a material change fires.
-        scorer.mark_alerted(sig.company, rollup.cumulative_score)
-        # Register with the per-run hard cap — any further signals for this
-        # company in the current pipeline invocation will short-circuit.
-        if per_run_alerted_companies is not None:
-            per_run_alerted_companies.add(sig.company_id)
+        # (cooldown + per-run cap were registered earlier at Alert creation
+        # so they also apply to digest-queued alerts.)
 
         if sig.company.hubspot_id:
             with stage_span("hubspot_write"):
