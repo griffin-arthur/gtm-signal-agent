@@ -159,11 +159,53 @@ def _store_cached(key: str, result: ValidationResult) -> None:
         )
 
 
+def _emit_validator_span_attrs(signal: NormalizedSignal, result: ValidationResult,
+                               cache_hit: bool) -> None:
+    """Set span attributes on the currently-active OTel span so Arthur (or any
+    OTel-aware backend) can run continuous evals against the validator
+    decisions without re-parsing the raw LLM output text.
+
+    Keys are prefixed `signal_agent.validator.*` to namespace away from the
+    auto-instrumented Anthropic + httpx attributes. Lazy import so that this
+    module stays import-safe even if observability deps aren't installed.
+    """
+    try:
+        from opentelemetry import trace
+        span = trace.get_current_span()
+        if span is None or not span.is_recording():
+            return
+        # Inputs the eval needs — these come from the signal we asked the
+        # LLM to validate.
+        span.set_attribute("signal_agent.validator.company_name", signal.company_name)
+        span.set_attribute("signal_agent.validator.company_domain", signal.company_domain)
+        span.set_attribute("signal_agent.validator.signal_type", signal.signal_type)
+        span.set_attribute("signal_agent.validator.source", signal.source)
+        span.set_attribute("signal_agent.validator.source_url", signal.source_url)
+        # Truncate signal_text to keep span size reasonable. OTel attribute
+        # values have implementation-defined size limits; 4 KB is safe.
+        span.set_attribute(
+            "signal_agent.validator.signal_text",
+            (signal.signal_text or "")[:4000],
+        )
+        # Outputs — what the LLM decided.
+        span.set_attribute("signal_agent.validator.is_valid", bool(result.is_valid))
+        span.set_attribute("signal_agent.validator.confidence", float(result.confidence))
+        span.set_attribute("signal_agent.validator.reasoning", (result.reasoning or "")[:2000])
+        span.set_attribute("signal_agent.validator.summary_for_ae", (result.summary_for_ae or "")[:1000])
+        span.set_attribute("signal_agent.validator.cache_hit", bool(cache_hit))
+    except Exception:
+        # Tracing must never break the pipeline.
+        pass
+
+
 def validate_signal(signal: NormalizedSignal, client: Anthropic | None = None) -> ValidationResult:
     key = _cache_key(signal.signal_type, signal.signal_text)
     cached = _get_cached(key)
     if cached is not None:
         log.debug("llm.cache_hit", key=key)
+        # Still emit span attrs on cache hits so continuous evals see every
+        # decision the validator returns, not just first-time decisions.
+        _emit_validator_span_attrs(signal, cached, cache_hit=True)
         return cached
 
     client = client or Anthropic(api_key=settings.anthropic_api_key)
@@ -216,4 +258,5 @@ def validate_signal(signal: NormalizedSignal, client: Anthropic | None = None) -
         )
 
     _store_cached(key, result)
+    _emit_validator_span_attrs(signal, result, cache_hit=False)
     return result
